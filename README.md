@@ -135,7 +135,9 @@ Commands installed:
 
 | Command | Description |
 |---|---|
-| `/adapt [repo]` | Generate & load adapter (default: current dir) |
+| `/adapt [repo]` | Generate or **incrementally update** adapter (only new commit diffs) |
+| `/adapt --full [repo]` | Force full re-walk from scratch |
+| `/adapt --local` | Update from **uncommitted** local changes (diff vs last endpoint, 1 GRU step; committed anchor preserved) |
 | `/export-gguf [path]` | Convert loaded adapter to GGUF LoRA |
 | `/task [name]` | `assert_rhs` or `code_gen` |
 | `/backend [name]` | `4bit` · `8bit` · `hf` · `gguf` |

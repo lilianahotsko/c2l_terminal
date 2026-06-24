@@ -270,6 +270,24 @@ def filter_diff(raw_diff: str) -> str:
     return "".join(kept)
 
 
+def get_working_tree_diff(repo_dir: Path, base_sha: str,
+                          timeout: int = 600) -> str:
+    """Diff ``base_sha`` against the current working tree (tracked files).
+
+    Captures staged + unstaged modifications to tracked files relative to the
+    given commit. Untracked (never ``git add``-ed) files are not included.
+    """
+    out = _run_git(repo_dir, ["diff", "--no-color", "-U3", base_sha],
+                   timeout=timeout)
+    return out if out else ""
+
+
+def working_tree_is_dirty(repo_dir: Path) -> bool:
+    """True if there are staged/unstaged changes to tracked files."""
+    out = _run_git(repo_dir, ["status", "--porcelain", "--untracked-files=no"])
+    return bool(out and out.strip())
+
+
 def ls_tree_py(repo_dir: Path, commit_sha: str,
                max_file_bytes: int = 2_000_000) -> List[Tuple[str, str, int]]:
     """Return [(blob_sha, path, size)] for tracked .py files at a commit."""
@@ -494,5 +512,7 @@ __all__ = [
     "GitCatFileBatch",
     "get_diff",
     "filter_diff",
+    "get_working_tree_diff",
+    "working_tree_is_dirty",
     "chronological_splits",
 ]

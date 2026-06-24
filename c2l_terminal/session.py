@@ -66,12 +66,17 @@ class Session:
         return None
 
     def adapt(self, repo: Optional[str] = None, *, incremental: bool = True,
-              progress=None) -> Dict[str, object]:
+              working_tree: bool = False, progress=None) -> Dict[str, object]:
         """Generate (or incrementally update) and cache an adapter for ``repo``.
 
         When ``incremental`` is True (default) and a prior walk exists for this
         repo+task, only new commit diffs after the last endpoint are embedded and
         the GRU continues from the saved hidden state.
+
+        When ``working_tree`` is True, the adapter is updated from *uncommitted*
+        local changes: the diff between the last committed adapter endpoint and
+        the current working tree is embedded as a single GRU step. The committed
+        anchor state is preserved (not overwritten).
         """
         from c2l.export import export_peft_adapter
         from c2l.pipeline import AdapterGenerator, resolve_repo
@@ -88,8 +93,12 @@ class Session:
         wd.mkdir(parents=True, exist_ok=True)
         repo_dir, repo_id = resolve_repo(repo, wd)
         gen = AdapterGenerator(cfg)
-        adapter = gen.generate(repo_dir, repo_id, task=self.task,
-                               incremental=incremental, progress=progress)
+        if working_tree:
+            adapter = gen.generate_working_tree(repo_dir, repo_id,
+                                                task=self.task, progress=progress)
+        else:
+            adapter = gen.generate(repo_dir, repo_id, task=self.task,
+                                   incremental=incremental, progress=progress)
         out_dir = cfg.resolved_adapters_dir() / adapter.fingerprint()
         path = export_peft_adapter(adapter, str(out_dir))
 

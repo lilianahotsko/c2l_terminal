@@ -13,6 +13,7 @@ HELP = """\
 ```
 /adapt [repo]        Generate/update adapter (incremental if cached walk exists)
 /adapt --full [repo] Force full re-walk from scratch
+/adapt --local       Update from uncommitted local changes (1 GRU step, keeps anchor)
 /load [path|fp]      Load a cached adapter (no regeneration)
 /task [name]         Get/set the task (assert_rhs, code_gen, ...)
 /tasks               List available tasks
@@ -106,20 +107,29 @@ def _load(session: Session, args: List[str]) -> None:
 
 def _adapt(session: Session, args: List[str]) -> None:
     incremental = True
-    if args and args[0] == "--full":
-        incremental = False
+    working_tree = False
+    # flags may appear in any order before the optional repo arg
+    while args and args[0] in ("--full", "--local", "--dirty", "--wt"):
+        flag = args[0]
+        if flag == "--full":
+            incremental = False
+        else:  # --local / --dirty / --wt
+            working_tree = True
         args = args[1:]
     repo = args[0] if args else None
     cb, finish = ui.make_progress()
     try:
-        meta = session.adapt(repo, incremental=incremental, progress=cb)
+        meta = session.adapt(repo, incremental=incremental,
+                             working_tree=working_tree, progress=cb)
     except Exception as e:
         finish()
         ui.error(f"adapt failed: {e}")
         return
     finish()
+    mode = ("working-tree (uncommitted, 1 GRU step)" if working_tree
+            else "full" if not incremental else "incremental")
     ui.ok(f"adapter ready for {meta['repo_id']}")
-    ui.info(f"  mode        : {'full' if not incremental else 'incremental'}")
+    ui.info(f"  mode        : {mode}")
     ui.info(f"  task        : {meta['task']} (conditioned={meta['task_conditioned']})")
     ui.info(f"  fingerprint : {meta['fingerprint']}")
     ui.info(f"  commits     : {meta['commits_walked']} walked  endpoint={meta['endpoint']}")

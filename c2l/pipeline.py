@@ -33,7 +33,9 @@ from .core import (
     specs_from_hf_config,
 )
 from .embedding import Qwen3Embedder
-from .git_pipeline import GitCatFileBatch, RepoProcessResult, ls_tree_py, process_repo
+from .git_pipeline import (GitCatFileBatch, RepoProcessResult,
+                           filter_diff, get_working_tree_diff, ls_tree_py,
+                           process_repo, working_tree_is_dirty)
 
 ProgressFn = Optional[Callable[[str, float], None]]
 
@@ -341,6 +343,86 @@ class AdapterGenerator:
             alpha=self._alpha, A=A, B=B, type_dims=dict(self._type_dims),
             endpoint_sha=result.commits[endpoint].sha,
             n_commits_walked=endpoint + 1, checkpoint_id=self._ckpt_id,
+            task_conditioned=task_conditioned)
+
+    def generate_working_tree(self, repo_dir: Path, repo_id: str,
+                              task: str = "assert_rhs",
+                              progress: ProgressFn = None) -> GeneratedAdapter:
+        """Update the adapter from *uncommitted* local changes.
+
+        Diffs the last committed adapter endpoint against the current working
+        tree (tracked files), embeds that single diff, and takes **one** GRU
+        step from the saved committed hidden state. The persistent walk state is
+        left untouched, so the committed anchor is preserved and every
+        working-tree adapt re-derives from the same committed endpoint.
+        """
+        import hashlib
+
+        import torch
+        from .tasks import get_task
+
+        self.load(progress=progress)
+        walk_path = _walk_state_path(self.cfg, repo_id, task)
+        prior = _load_walk_state(walk_path, repo_id=repo_id, task=task,
+                                 ckpt_id=self._ckpt_id)
+        if prior is None:
+            raise RuntimeError(
+                "no committed adapter state for this repo+task yet. Run "
+                "`/adapt` once (on committed history) to create the anchor, "
+                "then `/adapt --local` to fold in uncommitted changes.")
+
+        base_sha = prior.get("endpoint_sha", "")
+        if progress:
+            progress("Diffing working tree against last adapter endpoint…", 0.0)
+        raw = get_working_tree_diff(repo_dir, base_sha)
+        diff = filter_diff(raw)
+        if not diff.strip():
+            raise RuntimeError(
+                "no uncommitted source changes vs the last adapter endpoint "
+                f"({base_sha[:10]}). Edit tracked .py/.md/.rst files first, or "
+                "use `/adapt` to walk newly committed history.")
+
+        gru = self._gru
+        device = self.device
+        h = prior["h"].to(device)
+
+        if progress:
+            progress("GRU working-tree step (1)…", 0.5)
+        with torch.no_grad():
+            diff_emb = self.embedder.embed_diff(diff)
+            diff_t = torch.from_numpy(diff_emb).to(device).unsqueeze(0)
+            h_wt = gru.step(diff_t, h)
+            hidden_endpoint = h_wt[-1].detach()
+
+        ctx = gru.output_norm(hidden_endpoint)
+
+        task_obj = get_task(task)
+        task_conditioned = bool(self._head.num_tasks > 0)
+        task_idx = task_obj.task_index if task_conditioned else None
+        if (task_conditioned and task_obj.task_index >= self._head.num_tasks):
+            raise ValueError(
+                f"checkpoint only supports {self._head.num_tasks} task(s); "
+                f"task {task!r} has index {task_obj.task_index}.")
+
+        with torch.no_grad():
+            head_out = self._head(ctx, task_id=task_idx)
+
+        A = {t: head_out["A"][t][0].float().cpu().numpy() for t in self._head.types}
+        B = {t: head_out["B"][t][0].float().cpu().numpy() for t in self._head.types}
+
+        # Distinct provenance so the working-tree adapter caches under its own
+        # fingerprint and never clobbers the committed one. NOTE: we do NOT call
+        # _save_walk_state -- the committed anchor (prior["h"]) is preserved.
+        diff_hash = hashlib.sha256(diff.encode("utf-8")).hexdigest()[:8]
+        synthetic_endpoint = f"{base_sha}+wt-{diff_hash}"
+        walked = int(prior.get("endpoint_index", 0)) + 1
+
+        return GeneratedAdapter(
+            repo_id=repo_id, task=task, base_model=self.cfg.base_model,
+            target_modules=list(self._head.types), rank=self._rank,
+            alpha=self._alpha, A=A, B=B, type_dims=dict(self._type_dims),
+            endpoint_sha=synthetic_endpoint,
+            n_commits_walked=walked, checkpoint_id=self._ckpt_id,
             task_conditioned=task_conditioned)
 
     def _embed_repo_state(self, repo_dir: Path, commit_sha: str) -> Tuple["np.ndarray", int]:
