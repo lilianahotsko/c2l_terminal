@@ -251,7 +251,10 @@ class Session:
                 kept.append(w)
         body = " ".join(kept) if kept else prompt
         chunks.append(body)
-        return "\n".join(c for c in chunks if c).rstrip() + "\n"
+        # No trailing newline: the model must complete *inline* after the
+        # prefix (e.g. ``assert 1+1==`` -> `` 2``). A trailing newline would make
+        # it generate on a fresh line and immediately hit the newline stop.
+        return "\n".join(c for c in chunks if c).rstrip()
 
     @staticmethod
     def _read_file_block(path: str) -> str:
