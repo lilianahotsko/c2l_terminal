@@ -38,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--task", default="assert_rhs")
     p.add_argument("--backend", default="4bit",
                    choices=["4bit", "8bit", "hf", "gguf"])
-    p.add_argument("--tokens", type=int, default=64, dest="tokens")
+    p.add_argument("--tokens", type=int, default=16, dest="tokens")
     p.add_argument("--device", default=None, help="cuda | cpu (default: auto)")
     p.add_argument("--offline", action="store_true")
     p.add_argument("--adapt", action="store_true",

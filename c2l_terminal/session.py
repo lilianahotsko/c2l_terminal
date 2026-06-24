@@ -35,7 +35,7 @@ class Session:
     repo_id: Optional[str] = None
     task: str = "assert_rhs"
     backend: str = "4bit"
-    max_new_tokens: int = 64
+    max_new_tokens: int = 16
     device: Optional[str] = None          # None -> auto
     offline: bool = False
     adapter_dir: Optional[str] = None

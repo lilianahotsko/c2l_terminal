@@ -156,11 +156,15 @@ class GGUFInference:
             "llama-cli on PATH.")
 
     def generate(self, prefix: str, max_new_tokens: int = 32) -> str:
+        import re
         import subprocess
         cli = self._llama_cli()
+        # -no-cnv / -st: raw completion, not chat/interactive (newer llama-cli
+        # auto-enables conversation mode from the GGUF chat template).
+        # -r "\n": stop at first newline (assert_rhs-style completions).
         cmd = [cli, "-m", self.base_gguf, "-p", prefix,
                "-n", str(int(max_new_tokens)), "--no-display-prompt",
-               "--temp", "0"]
+               "--temp", "0", "-no-cnv", "-st", "-r", "\n"]
         if self.lora_gguf:
             cmd += ["--lora", self.lora_gguf]
         if self.n_threads:
@@ -168,7 +172,10 @@ class GGUFInference:
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode != 0:
             raise RuntimeError(f"llama-cli failed:\n{res.stderr[-2000:]}")
-        return res.stdout
+        out = res.stdout
+        # Drop llama.cpp speed / stats lines if any leak into stdout.
+        out = re.sub(r"^\[ Prompt:.*\]$", "", out, flags=re.MULTILINE)
+        return out.strip()
 
 
 def make_backend(backend: Backend = "hf", *, adapter_dir: Optional[str] = None,
