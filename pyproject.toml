@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "c2l-terminal"
+version = "0.1.0"
+description = "Self-contained terminal coding assistant powered by quantized Code2LoRA adapters."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = [
+    "torch>=2.3",
+    "transformers>=4.45",
+    "accelerate>=0.34",
+    "peft>=0.11",
+    "safetensors>=0.4",
+    "huggingface_hub>=0.25",
+    "numpy>=1.24",
+    "rich>=13.0",
+    "prompt_toolkit>=3.0",
+]
+
+[project.optional-dependencies]
+# 4-/8-bit inference via bitsandbytes (GPU or CPU >= 0.43).
+quant = ["bitsandbytes>=0.43"]
+
+[project.scripts]
+c2lt = "c2l_terminal.repl:main"
+c2l-terminal = "c2l_terminal.repl:main"
+c2l = "c2l.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["c2l*", "c2l_terminal*"]
+
+[tool.setuptools.package-data]
+c2l = ["c2l.yaml"]
