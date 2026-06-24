@@ -211,7 +211,8 @@ GGUF completion: ~5–30 s per prompt on a laptop CPU.
 ## Troubleshooting
 
 - **"no git repo"** — `/adapt /path/to/repo` or clone a repo first.
-- **`llama-cli` not found** — build llama.cpp; add `build/bin` to `PATH`.
+- **`llama-cli` / `llama-completion` not found** — build llama.cpp; add `build/bin` to `PATH`. Newer builds use `llama-completion` for raw completion; the tool auto-detects either.
+- **`--no-conversation is not supported by llama-cli`** — your build split out `llama-completion`; update `c2l` (`git pull`) so it prefers that binary.
 - **`convert_lora_to_gguf.py` not found** — set `C2L_LLAMACPP=~/llama.cpp`.
 - **Wrong base GGUF** — must be **Qwen2.5-Coder-1.5B**, not another Qwen variant.
 - **bitsandbytes on CPU** — needs ≥ 0.43; otherwise use `gguf`.

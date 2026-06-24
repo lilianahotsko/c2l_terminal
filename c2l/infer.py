@@ -129,10 +129,17 @@ class HFInference:
 class GGUFInference:
     """llama.cpp backend: quantized base GGUF + LoRA GGUF, CPU-friendly.
 
-    Requires a llama.cpp build (``llama-cli`` on PATH or under ``C2L_LLAMACPP``),
-    a base-model GGUF (``base_gguf``), and a converted LoRA GGUF (``lora_gguf``,
-    see :func:`c2l.export.convert_to_gguf`).
+    Requires a llama.cpp build (``llama-completion`` or ``llama-cli`` on PATH or
+    under ``C2L_LLAMACPP``), a base-model GGUF (``base_gguf``), and a converted
+    LoRA GGUF (``lora_gguf``, see :func:`c2l.export.convert_to_gguf`).
+
+    Newer llama.cpp builds split raw text completion into a separate
+    ``llama-completion`` binary; ``llama-cli`` became chat-only and rejects
+    ``-no-cnv``. We prefer ``llama-completion`` and fall back to ``llama-cli``.
     """
+
+    # Preferred binary first; old builds only ship llama-cli.
+    _BINARIES = ("llama-completion", "llama-cli")
 
     def __init__(self, base_gguf: str, lora_gguf: Optional[str] = None,
                  n_threads: Optional[int] = None):
@@ -140,28 +147,33 @@ class GGUFInference:
         self.lora_gguf = lora_gguf
         self.n_threads = n_threads
 
-    def _llama_cli(self) -> str:
+    def _resolve_binary(self) -> str:
         import os
         from shutil import which
         root = os.environ.get("C2L_LLAMACPP")
+        roots = []
         if root:
-            cand = Path(root).expanduser() / "llama-cli"
-            if cand.exists():
-                return str(cand)
-        found = which("llama-cli")
-        if found:
-            return found
+            base = Path(root).expanduser()
+            roots += [base, base / "build" / "bin"]
+        for name in self._BINARIES:
+            for d in roots:
+                cand = d / name
+                if cand.exists():
+                    return str(cand)
+            found = which(name)
+            if found:
+                return found
         raise RuntimeError(
-            "llama-cli not found. Build llama.cpp and set C2L_LLAMACPP, or put "
-            "llama-cli on PATH.")
+            "Neither 'llama-completion' nor 'llama-cli' found. Build llama.cpp "
+            "and set C2L_LLAMACPP (or put the binary on PATH).")
 
     def generate(self, prefix: str, max_new_tokens: int = 32) -> str:
         import re
         import subprocess
-        cli = self._llama_cli()
-        # -no-cnv / -st: raw completion, not chat/interactive (newer llama-cli
-        # auto-enables conversation mode from the GGUF chat template).
-        # -r "\n": stop at first newline (assert_rhs-style completions).
+        cli = self._resolve_binary()
+        # -no-cnv / -st: force raw completion, never chat/interactive (llama.cpp
+        # auto-enables conversation mode when the GGUF carries a chat template).
+        # -r "\n": stop at the first newline (assert_rhs-style completions).
         cmd = [cli, "-m", self.base_gguf, "-p", prefix,
                "-n", str(int(max_new_tokens)), "--no-display-prompt",
                "--temp", "0", "-no-cnv", "-st", "-r", "\n"]
@@ -171,10 +183,12 @@ class GGUFInference:
             cmd += ["-t", str(int(self.n_threads))]
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode != 0:
-            raise RuntimeError(f"llama-cli failed:\n{res.stderr[-2000:]}")
+            raise RuntimeError(
+                f"{Path(cli).name} failed:\n{res.stderr[-2000:]}")
         out = res.stdout
-        # Drop llama.cpp speed / stats lines if any leak into stdout.
+        # Drop any llama.cpp banner / speed-stats lines that leak into stdout.
         out = re.sub(r"^\[ Prompt:.*\]$", "", out, flags=re.MULTILINE)
+        out = re.sub(r"^\s*Exiting\.\.\.\s*$", "", out, flags=re.MULTILINE)
         return out.strip()
 
 
