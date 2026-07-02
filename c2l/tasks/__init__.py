@@ -7,11 +7,13 @@ head's task embedding and MUST stay constant once a checkpoint is trained.
 
 from __future__ import annotations
 
+import os
 from typing import Dict, List, Type
 
 from .assert_rhs import AssertRhsTask
 from .base import QnA, Task
 from .code_gen import CodeGenTask
+from .qa import QaTask
 
 _REGISTRY: Dict[str, Task] = {}
 
@@ -56,9 +58,16 @@ def task_index(task_id: str) -> int:
     return get_task(task_id).task_index
 
 
-# Register the built-ins.
+# Register the built-ins. NOTE: ``code_gen`` and ``qa`` both claim head index 1,
+# so only one can be active at a time -- pick the one your loaded checkpoint was
+# trained with. The shipped ``c2l_evo_multitask`` checkpoint is {assert_rhs:0,
+# qa:1}, so ``qa`` is registered by default. Set C2L_ENABLE_CODEGEN=1 to use a
+# code_gen checkpoint instead.
 register(AssertRhsTask())
-register(CodeGenTask())
+if os.environ.get("C2L_ENABLE_CODEGEN", "").strip().lower() in ("1", "true", "yes", "on"):
+    register(CodeGenTask())
+else:
+    register(QaTask())
 
 
 __all__ = [
@@ -66,6 +75,7 @@ __all__ = [
     "Task",
     "AssertRhsTask",
     "CodeGenTask",
+    "QaTask",
     "register",
     "get_task",
     "list_tasks",
