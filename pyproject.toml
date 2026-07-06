@@ -3,12 +3,28 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "c2l-terminal"
-version = "0.1.0"
-description = "Self-contained terminal coding assistant powered by quantized Code2LoRA adapters."
+name = "code2lora"
+version = "0.2.0"
+description = "Terminal coding assistant that turns your repo's commit history into a LoRA adapter for a quantized code LLM — on-device, offline-capable."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
+authors = [{ name = "Liliana Hotsko" }]
+keywords = [
+    "lora", "hypernetwork", "code-completion", "llm", "peft",
+    "quantization", "llama.cpp", "repository", "code2lora",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "torch>=2.3",
     "transformers>=4.45",
@@ -24,6 +40,12 @@ dependencies = [
 [project.optional-dependencies]
 # 4-/8-bit inference via bitsandbytes (GPU or CPU >= 0.43).
 quant = ["bitsandbytes>=0.43"]
+
+[project.urls]
+Homepage = "https://lilianahotsko.github.io/Code2LoRA/"
+Repository = "https://github.com/lilianahotsko/c2l_terminal"
+"Model (Hugging Face)" = "https://huggingface.co/code2lora/code2lora-gru"
+"Live Demo" = "https://huggingface.co/spaces/code2lora/code2lora-gru-demo"
 
 [project.scripts]
 c2lt = "c2l_terminal.repl:main"

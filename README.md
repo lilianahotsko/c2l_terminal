@@ -1,10 +1,19 @@
-# c2l-terminal
+# code2lora (c2l-terminal)
 
 A **self-contained**, Claude-Code-style terminal coding assistant powered by
 **quantized Code2LoRA (C2L)** and **per-repository adapters**.
 
-Copy **only this folder** to your machine — it includes the full `c2l` SDK
-vendored inside (`c2l/`). No parent repository required.
+```bash
+pip install code2lora
+```
+
+Project page: <https://lilianahotsko.github.io/Code2LoRA/> ·
+Checkpoint: [`code2lora/code2lora-gru`](https://huggingface.co/code2lora/code2lora-gru) ·
+Live demo: [Hugging Face Space](https://huggingface.co/spaces/code2lora/code2lora-gru-demo)
+
+Installing from source instead? Copy **only this folder** to your machine — it
+includes the full `c2l` SDK vendored inside (`c2l/`). No parent repository
+required.
 
 It does two things:
 
@@ -25,10 +34,9 @@ Everything below runs from **this folder only**.
 ### 1. Install Python deps
 
 ```bash
-cd c2l_terminal
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -e .
+pip install code2lora             # or: pip install -e . (from this folder)
 ```
 
 ### 2. Build llama.cpp (one-time)
@@ -107,10 +115,12 @@ training scripts.
 ## Install (any backend)
 
 ```bash
+pip install code2lora            # CPU + GGUF path
+pip install "code2lora[quant]"   # optional: bitsandbytes 4/8-bit
+
+# or from a source checkout:
 cd c2l_terminal
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e .                 # CPU + GGUF path
-pip install -e ".[quant]"      # optional: bitsandbytes 4/8-bit
+pip install -e .
 ```
 
 Commands installed:
