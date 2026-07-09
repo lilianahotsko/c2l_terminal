@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "code2lora"
-version = "0.2.0"
-description = "Terminal coding assistant that turns your repo's commit history into a LoRA adapter for a quantized code LLM — on-device, offline-capable."
+version = "0.3.0"
+description = "Terminal coding assistant that turns your repo's commit history into a LoRA adapter for a quantized code LLM — on-device, offline-capable. One-command setup."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
@@ -35,6 +35,9 @@ dependencies = [
     "numpy>=1.24",
     "rich>=13.0",
     "prompt_toolkit>=3.0",
+    # Provisioning: base-GGUF download + LoRA→GGUF conversion (llama.cpp scripts).
+    "gguf>=0.9",
+    "sentencepiece>=0.1.99",
 ]
 
 [project.optional-dependencies]
@@ -51,6 +54,7 @@ Repository = "https://github.com/lilianahotsko/c2l_terminal"
 c2lt = "c2l_terminal.repl:main"
 c2l-terminal = "c2l_terminal.repl:main"
 c2l = "c2l.cli:main"
+c2l-setup = "c2l.bootstrap:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

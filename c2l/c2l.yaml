@@ -20,14 +20,16 @@ target_modules:
 
 # Trained GRU + multi-task head checkpoint. Leave ckpt_path empty to pull
 # ckpt_file from ckpt_repo on the Hub; set ckpt_path for a fully-local file.
+# The multi-task head (num_tasks=2) conditions the adapter on the task, so
+# `--task qa` and `--task assert_rhs` produce genuinely different adapters.
 ckpt_path:
-ckpt_repo: code2lora/code2lora-gru
-ckpt_file: code2lora_gru.pt
+ckpt_repo: code2lora/c2l-evo-multitask
+ckpt_file: gru_head.best.pt
 
 # Tasks enabled in this deployment (registry ids). Empty == all registered.
 tasks:
   - assert_rhs
-  - code_gen
+  - qa
 
 # Adapter generation knobs.
 max_repo_state_files: 400

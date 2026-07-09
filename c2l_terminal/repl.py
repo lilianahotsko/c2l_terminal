@@ -11,22 +11,24 @@ from .session import Session
 
 
 def _make_reader():
-    """Return a callable ``read(prompt) -> str`` with history if available.
+    """Return ``(read, styled)`` where ``read(prompt) -> str``.
 
-    Falls back to plain ``input`` when stdin is not a TTY (piped/scripted) or
-    when prompt_toolkit is unavailable.
+    ``styled`` is True when the prompt may contain ANSI styling (interactive
+    TTY). Falls back to plain ``input`` when stdin is not a TTY (piped/scripted)
+    or when prompt_toolkit is unavailable.
     """
     if sys.stdin.isatty():
         try:
-            from prompt_toolkit import PromptSession
+            from prompt_toolkit import ANSI, PromptSession
             from prompt_toolkit.history import FileHistory
             hist = Path("~/.cache/c2l/terminal_history").expanduser()
             hist.parent.mkdir(parents=True, exist_ok=True)
             ps = PromptSession(history=FileHistory(str(hist)))
-            return lambda prompt: ps.prompt(prompt)
+            return (lambda prompt: ps.prompt(ANSI(prompt))), True
         except Exception:
             pass
-    return lambda prompt: input(prompt)
+        return (lambda prompt: input(prompt)), True
+    return (lambda prompt: input(prompt)), False
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,8 +38,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("repo", nargs="?", default=None,
                    help="repo path or git URL (default: current directory)")
     p.add_argument("--task", default="assert_rhs")
-    p.add_argument("--backend", default="4bit",
+    p.add_argument("--backend", default="gguf",
                    choices=["4bit", "8bit", "hf", "gguf"])
+    p.add_argument("--no-setup", action="store_true",
+                   help="skip first-run auto-provisioning (models/llama.cpp/GGUF)")
     p.add_argument("--tokens", type=int, default=16, dest="tokens")
     p.add_argument("--device", default=None, help="cuda | cpu (default: auto)")
     p.add_argument("--offline", action="store_true")
@@ -54,31 +58,50 @@ def main(argv=None) -> int:
         repo=args.repo, task=args.task, backend=args.backend,
         max_new_tokens=args.tokens, device=args.device, offline=args.offline)
 
-    ui.banner(
-        f"c2l-terminal {__version__}",
-        "quantized Code2LoRA coding REPL  -  /help for commands, /quit to exit")
+    # First-run provisioning: download models + base GGUF + llama.cpp so the
+    # tool "just works" after `pip install`. One-time; cached under ~/.cache/c2l.
+    if not args.no_setup and not args.offline:
+        try:
+            from c2l.bootstrap import auto_setup_if_needed, is_setup_done
+            if not is_setup_done():
+                ui.info("first run: setting up models, base GGUF, and llama.cpp "
+                        "(one-time, into ~/.cache/c2l)…")
+                cb, finish = ui.make_progress()
+                try:
+                    auto_setup_if_needed(offline=False, progress=cb)
+                finally:
+                    finish()
+                ui.ok("setup complete.")
+        except Exception as e:  # noqa: BLE001
+            ui.warn(f"auto-setup skipped ({e}); run `c2l-setup` manually if needed.")
 
     detected = session.detect_repo()
-    if detected:
-        ui.info(f"repo: {detected}  (backend={session.backend}, task={session.task})")
-    else:
-        ui.warn("no git repo in the current directory -- run `/adapt <path|url>`.")
+    # Pick up a cached adapter before drawing the banner so it shows real state
+    # (skip when --adapt: we regenerate right after the banner instead).
+    if detected and not args.adapt:
+        try:
+            session.try_load_cached()
+        except Exception:
+            pass
 
-    if args.adapt and detected:
+    display_repo = session.repo_id or (Path(detected).name if detected else None)
+    ui.welcome(
+        version=__version__, repo_id=display_repo, backend=session.backend,
+        adapter=session.adapter_fingerprint, device=session.device or "auto")
+
+    if not detected:
+        ui.warn("no git repo in the current directory — "
+                "run `/adapt <path|url>` to get started.")
+    elif args.adapt:
         commands.handle(session, "/adapt")
-    elif detected:
-        cached = session.try_load_cached()
-        if cached:
-            ui.ok(f"loaded cached adapter for {cached['repo_id']} "
-                  f"({cached['fingerprint'][:12]}…)")
 
-    if not session.adapter_dir:
-        ui.info("tip: run `/load` or `/adapt` before prompting.")
-
-    read = _make_reader()
+    read, styled = _make_reader()
     while True:
         try:
-            line = read("\nc2l> ")
+            prompt = (ui.prompt_text(session.repo_id or display_repo,
+                                     ready=bool(session.adapter_dir))
+                      if styled else "\nc2l> ")
+            line = read(prompt)
         except (EOFError, KeyboardInterrupt):
             print()
             break
@@ -105,10 +128,10 @@ def main(argv=None) -> int:
         except Exception as e:
             ui.error(f"inference failed: {e}")
             continue
-        ui.rule(session.repo_id or "completion")
+        ui.rule(f"{session.repo_id or 'completion'}  ·  {session.backend}")
         ui.assistant_code(out)
 
-    ui.info("bye.")
+    ui.info("bye — happy hacking.")
     return 0
 
 

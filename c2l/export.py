@@ -119,6 +119,7 @@ def convert_to_gguf(adapter_dir: str, out_path: Optional[str] = None,
     """
     import os
     import subprocess
+    import sys
 
     adir = Path(adapter_dir).expanduser()
     if not (adir / ADAPTER_CONFIG_NAME).exists():
@@ -132,16 +133,27 @@ def convert_to_gguf(adapter_dir: str, out_path: Optional[str] = None,
         if cand.exists():
             script = cand
     if script is None:
+        # Fall back to the auto-provisioned llama.cpp under ~/.cache/c2l.
+        try:
+            from .bootstrap import find_convert_script
+            found = find_convert_script()
+            if found:
+                script = found
+        except Exception:
+            pass
+    if script is None:
         from shutil import which
         found = which("convert_lora_to_gguf.py")
         if found:
             script = Path(found)
     if script is None:
         raise RuntimeError(
-            "convert_lora_to_gguf.py not found. Clone llama.cpp and set "
-            "C2L_LLAMACPP=/path/to/llama.cpp (or pass llama_cpp_dir).")
+            "convert_lora_to_gguf.py not found. Run `c2l-setup` to provision "
+            "llama.cpp (or set C2L_LLAMACPP=/path/to/llama.cpp).")
 
-    cmd = ["python", str(script), str(adir), "--outfile", str(out)]
+    py = sys.executable or "python"
+
+    cmd = [py, str(script), str(adir), "--outfile", str(out)]
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:
         raise RuntimeError(f"GGUF conversion failed:\n{res.stderr[-2000:]}")

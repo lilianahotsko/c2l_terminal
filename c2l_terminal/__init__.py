@@ -11,6 +11,6 @@ The heavy lifting lives in the :mod:`c2l` SDK; this package is just the
 interactive front-end.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = ["__version__"]

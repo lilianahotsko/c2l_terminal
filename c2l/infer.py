@@ -148,6 +148,14 @@ class GGUFInference:
         self.n_threads = n_threads
 
     def _resolve_binary(self) -> str:
+        # Prefer the auto-provisioned build under ~/.cache/c2l, then env/PATH.
+        try:
+            from .bootstrap import find_llama_binary
+            found = find_llama_binary()
+            if found:
+                return str(found)
+        except Exception:
+            pass
         import os
         from shutil import which
         root = os.environ.get("C2L_LLAMACPP")
@@ -164,8 +172,8 @@ class GGUFInference:
             if found:
                 return found
         raise RuntimeError(
-            "Neither 'llama-completion' nor 'llama-cli' found. Build llama.cpp "
-            "and set C2L_LLAMACPP (or put the binary on PATH).")
+            "Neither 'llama-completion' nor 'llama-cli' found. Run `c2l-setup` "
+            "to provision llama.cpp (or set C2L_LLAMACPP to an existing build).")
 
     def generate(self, prefix: str, max_new_tokens: int = 32) -> str:
         import re

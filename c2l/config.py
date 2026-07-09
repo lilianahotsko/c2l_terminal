@@ -25,8 +25,8 @@ DEFAULT_TARGET_MODULES = [
     "q_proj", "k_proj", "v_proj", "o_proj",
     "up_proj", "gate_proj", "down_proj",
 ]
-DEFAULT_CKPT_REPO = "code2lora/code2lora-gru"
-DEFAULT_CKPT_FILE = "code2lora_gru.pt"
+DEFAULT_CKPT_REPO = "code2lora/c2l-evo-multitask"
+DEFAULT_CKPT_FILE = "gru_head.best.pt"
 
 PACKAGED_CONFIG = Path(__file__).with_name("c2l.yaml")
 

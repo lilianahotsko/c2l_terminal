@@ -34,7 +34,7 @@ class Session:
     repo: Optional[str] = None            # git URL or local path
     repo_id: Optional[str] = None
     task: str = "assert_rhs"
-    backend: str = "4bit"
+    backend: str = "gguf"
     max_new_tokens: int = 16
     device: Optional[str] = None          # None -> auto
     offline: bool = False
@@ -102,6 +102,18 @@ class Session:
         out_dir = cfg.resolved_adapters_dir() / adapter.fingerprint()
         path = export_peft_adapter(adapter, str(out_dir))
 
+        # For the gguf backend, convert the adapter to a LoRA GGUF right away so
+        # completions work without a separate /export-gguf step.
+        has_gguf = False
+        if self.backend == "gguf":
+            try:
+                from c2l.export import convert_to_gguf
+                convert_to_gguf(str(path))
+                has_gguf = True
+            except Exception as e:  # noqa: BLE001
+                if progress:
+                    progress(f"gguf conversion skipped: {e}", 1.0)
+
         self.repo = str(repo_dir) if repo_dir else repo
         self.repo_id = adapter.repo_id
         self.adapter_dir = str(path)
@@ -116,6 +128,7 @@ class Session:
             "endpoint": (getattr(adapter, "endpoint_sha", "") or "")[:10],
             "base_model": adapter.base_model,
             "adapter_dir": str(path),
+            "has_gguf": has_gguf,
         }
 
     def load_adapter(self, path: Optional[str] = None) -> Dict[str, object]:
@@ -226,9 +239,17 @@ class Session:
         if self.backend == "gguf":
             base_gguf = os.environ.get("C2L_BASE_GGUF")
             if not base_gguf:
+                # Fall back to the auto-provisioned base GGUF under ~/.cache/c2l.
+                try:
+                    from c2l.bootstrap import ensure_base_gguf
+                    g = ensure_base_gguf(offline=self.offline)
+                    base_gguf = str(g) if g else None
+                except Exception:
+                    base_gguf = None
+            if not base_gguf:
                 raise RuntimeError(
-                    "gguf backend needs C2L_BASE_GGUF=<base model GGUF>. "
-                    "Also build a LoRA GGUF (c2l export --adapter ... --gguf ...).")
+                    "gguf backend needs a base model GGUF. Run `c2l-setup` to "
+                    "download it automatically, or set C2L_BASE_GGUF=<path>.")
             kw["base_gguf"] = base_gguf
             lora = None
             if self.adapter_dir:

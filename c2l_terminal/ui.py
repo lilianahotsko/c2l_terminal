@@ -31,6 +31,15 @@ _C = {
     "magenta": "\033[35m", "reset": "\033[0m",
 }
 
+# "C2L" in the ANSI Shadow figlet style; rendered in the welcome screen.
+WORDMARK = r"""
+ ██████╗██████╗ ██╗
+██╔════╝╚════██╗██║
+██║      █████╔╝██║
+██║     ██╔═══╝ ██║
+╚██████╗███████╗███████╗
+ ╚═════╝╚══════╝╚══════╝"""
+
 
 def _plain(msg: str, color: Optional[str] = None) -> None:
     if color and sys.stdout.isatty():
@@ -52,6 +61,139 @@ def banner(title: str, subtitle: str = "") -> None:
         if subtitle:
             _plain(f"  {subtitle}", "dim")
         _plain("=" * 60, "cyan")
+
+
+def welcome(*, version: str, repo_id: Optional[str] = None,
+            backend: str = "", adapter: Optional[str] = None,
+            device: Optional[str] = None) -> None:
+    """Stylish start screen: wordmark, live session status, and quickstart."""
+    ready = bool(adapter)
+    if _RICH:
+        from rich.table import Table
+
+        _console.print(Text(WORDMARK, style="bold cyan"))
+        _console.print(
+            f"[bold]code2lora[/bold] [dim]· on-device, repo-aware code "
+            f"completion · v{version}[/dim]\n")
+
+        status = Table.grid(padding=(0, 2))
+        status.add_column(style="dim", justify="right", no_wrap=True)
+        status.add_column()
+        status.add_row("repo", f"[cyan]{repo_id or '(none)'}[/cyan]")
+        status.add_row("backend", f"{backend}")
+        dot = "[green]●[/green]" if ready else "[yellow]○[/yellow]"
+        adapter_txt = (f"{dot} [green]{adapter[:12]}…[/green]" if ready
+                       else f"{dot} [yellow]none[/yellow] "
+                            f"[dim]— run[/dim] [bold]/adapt[/bold]")
+        status.add_row("adapter", adapter_txt)
+        if device:
+            status.add_row("device", f"[dim]{device}[/dim]")
+        _console.print(status)
+
+        quick = Table.grid(padding=(0, 2))
+        quick.add_column(style="bold cyan", justify="right", no_wrap=True)
+        quick.add_column()
+        quick.add_row("/adapt", "build the adapter for this repo")
+        quick.add_row("<prompt>",
+                      "type code to complete  [dim]e.g.[/dim]  "
+                      "[green]assert add(2, 3) ==[/green]")
+        quick.add_row("/help", "all commands   [dim]·[/dim]   /quit to exit")
+        _console.rule(style="dim")
+        _console.print(quick)
+        return
+
+    # ---- plain fallback ----
+    _plain(WORDMARK, "cyan")
+    _plain(f"code2lora  ·  on-device, repo-aware code completion  ·  v{version}\n",
+           "bold")
+    _plain(f"  repo     {repo_id or '(none)'}")
+    _plain(f"  backend  {backend}")
+    _plain(f"  adapter  {'● ' + adapter[:12] + '…' if ready else '○ none — run /adapt'}")
+    if device:
+        _plain(f"  device   {device}")
+    _plain("  " + "-" * 52, "dim")
+    _plain("  /adapt      build the adapter for this repo")
+    _plain("  <prompt>    type code to complete  (e.g. assert add(2, 3) ==)")
+    _plain("  /help       all commands  ·  /quit to exit")
+
+
+def prompt_text(repo_id: Optional[str] = None, ready: bool = False) -> str:
+    """Return an ANSI-styled input prompt reflecting session state."""
+    name = repo_id or "c2l"
+    dot = (f"{_C['green']}●{_C['reset']}" if ready
+           else f"{_C['yellow']}○{_C['reset']}")
+    return f"\n{dot} {_C['bold']}{_C['cyan']}{name}{_C['reset']} ▸ "
+
+
+# Command reference grouped for the /help screen: (command, description).
+_HELP_GROUPS = (
+    ("Adapter", (
+        ("/adapt [repo]", "build / update the adapter (incremental)"),
+        ("/adapt --full", "force a full re-walk from scratch"),
+        ("/adapt --local", "update from uncommitted local changes"),
+        ("/load [path|fp]", "load a cached adapter (no regeneration)"),
+        ("/export-gguf", "convert the adapter → GGUF for llama.cpp"),
+    )),
+    ("Session", (
+        ("/backend [name]", "4bit · 8bit · hf · gguf"),
+        ("/task [name]", "assert_rhs · qa · …"),
+        ("/tokens [n]", "max new tokens to generate"),
+        ("/context add <file>", "pin a file into every prompt"),
+        ("/status", "show the current session state"),
+    )),
+    ("General", (
+        ("/setup", "(re)download models + base GGUF + llama.cpp"),
+        ("/help", "show this help"),
+        ("/clear", "clear the screen"),
+        ("/quit", "leave  (also /exit, Ctrl-D)"),
+    )),
+)
+
+
+def help_panel() -> None:
+    """Render the grouped command reference."""
+    if _RICH:
+        from rich.table import Table
+
+        for title, rows in _HELP_GROUPS:
+            t = Table.grid(padding=(0, 2))
+            t.add_column(style="bold cyan", justify="right", no_wrap=True)
+            t.add_column()
+            for cmd, desc in rows:
+                t.add_row(cmd, desc)
+            _console.print(f"\n[bold]{title}[/bold]")
+            _console.print(t)
+        _console.print(
+            "\n[dim]Prompting[/dim]  type a code prefix to complete "
+            "(an assertion start, a signature + docstring, …).\n"
+            "[dim]         [/dim] inline [cyan]@path/to/file.py[/cyan] "
+            "pins that file into the current prompt.\n")
+        return
+
+    for title, rows in _HELP_GROUPS:
+        _plain(f"\n{title}", "bold")
+        for cmd, desc in rows:
+            _plain(f"  {cmd:<20} {desc}")
+    _plain("\nPrompting: type a code prefix to complete; inline @path pins a file.\n",
+           "dim")
+
+
+def keyvals(title: str, mapping) -> None:
+    """Render a titled key/value block (used by /status)."""
+    if _RICH:
+        from rich.table import Table
+
+        t = Table.grid(padding=(0, 2))
+        t.add_column(style="dim", justify="right", no_wrap=True)
+        t.add_column()
+        for k, v in mapping.items():
+            t.add_row(str(k), str(v))
+        _console.print(f"\n[bold]{title}[/bold]")
+        _console.print(t)
+        return
+    _plain(f"\n{title}", "bold")
+    for k, v in mapping.items():
+        _plain(f"  {str(k):<16} {v}")
 
 
 def info(msg: str) -> None:

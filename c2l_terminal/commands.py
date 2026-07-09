@@ -7,43 +7,24 @@ from typing import List
 from . import ui
 from .session import VALID_BACKENDS, Session
 
-HELP = """\
-**Commands**
-
-```
-/adapt [repo]        Generate/update adapter (incremental if cached walk exists)
-/adapt --full [repo] Force full re-walk from scratch
-/adapt --local       Update from uncommitted local changes (1 GRU step, keeps anchor)
-/load [path|fp]      Load a cached adapter (no regeneration)
-/task [name]         Get/set the task (assert_rhs, code_gen, ...)
-/tasks               List available tasks
-/backend [name]      Get/set inference backend: 4bit | 8bit | hf | gguf
-/tokens [n]          Get/set max new tokens (default 64)
-/context add <file>  Pin a file as standing context for every prompt
-/context clear       Remove all pinned context files
-  /context list        Show pinned context files
-  /export-gguf [path]  Convert the loaded adapter to GGUF for llama.cpp
-  /status              Show the current session state
-/clear               Clear the screen
-/help                Show this help
-/quit, /exit         Leave
-```
-
-**Prompting** — type a code prefix to complete (e.g. an assertion start, or a
-function signature + docstring). Inline `@path/to/file.py` expands that file
-into the context for that single prompt.
-"""
+# Short aliases -> canonical command, so users can type less.
+_ALIASES = {
+    "/a": "/adapt", "/l": "/load", "/b": "/backend", "/t": "/task",
+    "/s": "/status", "/c": "/clear", "/h": "/help", "/?": "/help",
+    "/q": "/quit", "/exit": "/quit",
+}
 
 
 def handle(session: Session, line: str) -> str:
     """Process one slash command. Returns 'quit' to exit, else 'continue'."""
     parts = line.strip().split()
     cmd, args = parts[0].lower(), parts[1:]
+    cmd = _ALIASES.get(cmd, cmd)
 
-    if cmd in ("/quit", "/exit", "/q"):
+    if cmd == "/quit":
         return "quit"
-    if cmd in ("/help", "/h", "/?"):
-        ui.markdown(HELP)
+    if cmd == "/help":
+        ui.help_panel()
     elif cmd == "/clear":
         print("\033[2J\033[H", end="")
     elif cmd == "/status":
@@ -64,16 +45,15 @@ def handle(session: Session, line: str) -> str:
         _context(session, args)
     elif cmd == "/export-gguf":
         _export_gguf(session, args)
+    elif cmd == "/setup":
+        _setup(session, args)
     else:
-        ui.warn(f"unknown command {cmd!r} -- try /help")
+        ui.warn(f"unknown command {cmd!r} — try /help")
     return "continue"
 
 
 def _status(session: Session) -> None:
-    st = session.status()
-    ui.rule("session")
-    for k, v in st.items():
-        ui.info(f"  {k:<16} {v}")
+    ui.keyvals("session", session.status())
 
 
 def _tasks() -> None:
@@ -182,6 +162,26 @@ def _export_gguf(session: Session, args: List[str]) -> None:
         ui.info("  set /backend gguf  (and C2L_BASE_GGUF + C2L_LLAMACPP) to use it")
     except Exception as e:
         ui.error(f"GGUF export failed: {e}")
+
+
+def _setup(session: Session, args: List[str]) -> None:
+    """(Re-)provision models, base GGUF, and llama.cpp into ~/.cache/c2l."""
+    force = "--force" in args
+    try:
+        from c2l.bootstrap import bootstrap_all
+    except Exception as e:  # noqa: BLE001
+        ui.error(f"setup unavailable: {e}")
+        return
+    cb, finish = ui.make_progress()
+    try:
+        summary = bootstrap_all(offline=session.offline, force=force, progress=cb)
+    except Exception as e:  # noqa: BLE001
+        finish()
+        ui.error(f"setup failed: {e}")
+        return
+    finish()
+    ui.ok("setup complete")
+    ui.keyvals("provisioned", summary)
 
 
 def _context(session: Session, args: List[str]) -> None:
